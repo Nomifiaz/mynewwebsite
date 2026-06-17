@@ -271,6 +271,16 @@ export default function Header({
             >
               Special Offer
             </button>
+            <button
+              onClick={() => { setCurrentTab("order-tracking"); }}
+              className={`py-3 border-b-2 transition-all cursor-pointer ${
+                currentTab === "order-tracking" 
+                  ? "border-[#F37D35] text-[#F37D35] font-semibold" 
+                  : isDarkLower ? "border-transparent text-gray-300 hover:text-white" : "border-transparent text-gray-600 hover:text-[#F37D35]"
+              }`}
+            >
+              Track Order
+            </button>
           </nav>
 
           {/* Quick Support Phone / Locations */}

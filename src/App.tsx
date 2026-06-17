@@ -18,6 +18,7 @@ import PromoBanners from "./components/PromoBanners";
 import ProductCard from "./components/ProductCard";
 import ProductDetail from "./components/ProductDetail";
 import CartPage from "./components/CartPage";
+import OrderTracking from "./components/OrderTracking";
 import ChatHelper from "./components/ChatHelper";
 import Footer from "./components/Footer";
 import { Product, CartItem, FilterState } from "./types";
@@ -645,6 +646,11 @@ export default function App() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* TAB 8: ORDER TRACKING PANEL */}
+        {currentTab === "order-tracking" && (
+          <OrderTracking />
         )}
 
       </main>
