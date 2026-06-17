@@ -1,12 +1,18 @@
 import { Product } from "./types";
 
-export const CATEGORIES = [
-  "Furniture",
-  "Electronics",
-  "Fashion",
-  "Home Decor",
-  "Health & Beauty",
-  "Sports"
+export interface CategoryType {
+  id: string | number;
+  name: string;
+  imageUrl: string;
+}
+
+export const CATEGORIES: CategoryType[] = [
+  { id: "furniture", name: "Furniture", imageUrl: "https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&q=80&w=150" },
+  { id: "electronics", name: "Electronics", imageUrl: "https://images.unsplash.com/photo-1498049794561-7780e7231661?auto=format&fit=crop&q=80&w=150" },
+  { id: "fashion", name: "Fashion", imageUrl: "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&q=80&w=150" },
+  { id: "homedecor", name: "Home Decor", imageUrl: "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&q=80&w=150" },
+  { id: "healthbeauty", name: "Health & Beauty", imageUrl: "https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?auto=format&fit=crop&q=80&w=150" },
+  { id: "sports", name: "Sports", imageUrl: "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&q=80&w=150" }
 ];
 
 export const PRODUCTS: Product[] = [

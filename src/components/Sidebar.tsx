@@ -14,15 +14,16 @@ import {
   Armchair
 } from "lucide-react";
 import { FilterState, Product } from "../types";
-import { CATEGORIES } from "../data";
+import { CATEGORIES as DEFAULT_CATEGORIES, CategoryType } from "../data";
 
 interface SidebarProps {
   filters: FilterState;
   setFilters: (filters: FilterState) => void;
   products: Product[];
+  categories?: CategoryType[];
 }
 
-export default function Sidebar({ filters, setFilters, products }: SidebarProps) {
+export default function Sidebar({ filters, setFilters, products, categories = DEFAULT_CATEGORIES }: SidebarProps) {
   // Temporary slider state for smooth sliding before committing
   const [localMaxPrice, setLocalMaxPrice] = useState(filters.maxPrice);
 
@@ -94,12 +95,12 @@ export default function Sidebar({ filters, setFilters, products }: SidebarProps)
         <p className="text-xs text-gray-400 mt-1 select-none">Shop by Department</p>
 
         <div className="mt-4 flex flex-col gap-1.5">
-          {CATEGORIES.map((cat) => {
-            const isSelected = filters.category === cat;
+          {categories.map((cat) => {
+            const isSelected = filters.category === cat.name;
             return (
               <button
-                key={cat}
-                onClick={() => handleCategoryClick(cat)}
+                key={cat.id || cat.name}
+                onClick={() => handleCategoryClick(cat.name)}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-all text-left cursor-pointer select-none ${
                   isSelected
                     ? "bg-[#002B24] text-white font-medium shadow-xs"
@@ -107,10 +108,26 @@ export default function Sidebar({ filters, setFilters, products }: SidebarProps)
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <span className={isSelected ? "text-white" : "text-gray-400"}>
-                    {getCategoryIcon(cat)}
+                  <span className={`w-7 h-7 rounded-lg overflow-hidden bg-gray-50 border flex items-center justify-center shrink-0 shadow-3xs transition-all ${
+                    isSelected ? "border-emerald-700 bg-[#001D18]" : "border-gray-150"
+                  }`}>
+                    {cat.imageUrl ? (
+                      <img 
+                        src={cat.imageUrl} 
+                        alt={cat.name} 
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <span className={isSelected ? "text-white" : "text-gray-400"}>
+                        {getCategoryIcon(cat.name)}
+                      </span>
+                    )}
                   </span>
-                  <span>{cat}</span>
+                  <span className="font-semibold">{cat.name}</span>
                 </div>
                 <ChevronRight size={14} className={isSelected ? "text-white" : "text-gray-400"} />
               </button>

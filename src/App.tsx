@@ -22,7 +22,7 @@ import OrderTracking from "./components/OrderTracking";
 import ChatHelper from "./components/ChatHelper";
 import Footer from "./components/Footer";
 import { Product, CartItem, FilterState } from "./types";
-import { PRODUCTS, DEFAULT_CART_ITEMS } from "./data";
+import { PRODUCTS, DEFAULT_CART_ITEMS, CATEGORIES as DEFAULT_CATEGORIES, CategoryType } from "./data";
 
 export default function App() {
   // Navigation states
@@ -45,6 +45,58 @@ export default function App() {
   const [cart, setCart] = useState<CartItem[]>(DEFAULT_CART_ITEMS);
   const [wishlist, setWishlist] = useState<Product[]>([]);
   
+  // Custom categories state initialized with beautiful standard categories with fallback icons/images
+  const [categories, setCategories] = useState<CategoryType[]>(DEFAULT_CATEGORIES);
+
+  // Dynamic API Fetch with robust fallback logic
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      controller.abort();
+    }, 4500); // Fail fast so layout is clean without blocking
+
+    const getCategories = async () => {
+      const endpoints = [
+        "http://localhost:3003/api/categories",
+        "/api/categories"
+      ];
+      for (const endpoint of endpoints) {
+        try {
+          const res = await fetch(endpoint, { signal: controller.signal });
+          if (res.ok) {
+            const body = await res.json();
+            if (body && body.success && Array.isArray(body.data)) {
+              if (active) {
+                const loaded = body.data.map((raw: any) => ({
+                  id: raw.id || raw.name.toLowerCase().replace(/\s+/g, "-"),
+                  name: raw.name,
+                  imageUrl: raw.imageUrl?.startsWith("http") 
+                    ? raw.imageUrl 
+                    : raw.imageUrl?.startsWith("/") 
+                      ? `http://localhost:3003${raw.imageUrl}` 
+                      : `http://localhost:3003/${raw.imageUrl}`
+                }));
+                setCategories(loaded);
+                clearTimeout(timer);
+                return;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`Category fetch unsuccessful for ${endpoint}:`, e);
+        }
+      }
+    };
+
+    getCategories();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, []);
+
   // Mobile filter drawer toggle
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
@@ -125,8 +177,15 @@ export default function App() {
   // Dynamic filter lists calculation
   const filteredProducts = useMemo(() => {
     return PRODUCTS.filter(p => {
-      // Category match
-      if (filters.category && p.category !== filters.category) return false;
+      // Category match with smart plurals/singular/case-insensitive heuristic
+      if (filters.category) {
+        const c1 = p.category.toLowerCase().trim();
+        const c2 = filters.category.toLowerCase().trim();
+        const isMatch = c1 === c2 || 
+                        c1.startsWith(c2.substring(0, Math.min(c2.length, 5))) || 
+                        c2.startsWith(c1.substring(0, Math.min(c1.length, 5)));
+        if (!isMatch) return false;
+      }
 
       // Brand selection match
       if (filters.brands.length > 0) {
@@ -278,6 +337,7 @@ export default function App() {
                   filters={filters} 
                   setFilters={setFilters} 
                   products={PRODUCTS}
+                  categories={categories}
                 />
               </div>
 
@@ -774,6 +834,7 @@ export default function App() {
                 filters={filters} 
                 setFilters={setFilters} 
                 products={PRODUCTS}
+                categories={categories}
               />
             </div>
 
