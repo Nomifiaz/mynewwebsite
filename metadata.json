@@ -1,0 +1,6 @@
+{
+  "name": "PieMart",
+  "description": "A elegant and high-fidelity tech and lifestyle e-commerce platform with catalog browsing, filters, interactive product details, reviews, cart management, and order summary calculation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
