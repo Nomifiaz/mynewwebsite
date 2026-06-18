@@ -71,7 +71,13 @@ export default function ProductDetail({
 
   // Dynamic related products list (match category, exclude other brand or custom product)
   const relatedProducts = allProducts
-    .filter(p => p.category === product.category && p.id !== product.id)
+    .filter(p => {
+      if (p.id === product.id) return false;
+      if (product.categoryId && p.categoryId && String(product.categoryId) === String(p.categoryId)) {
+        return true;
+      }
+      return p.category.toLowerCase().trim() === product.category.toLowerCase().trim();
+    })
     .slice(0, 4);
 
   return (

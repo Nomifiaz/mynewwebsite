@@ -24,6 +24,67 @@ import Footer from "./components/Footer";
 import { Product, CartItem, FilterState } from "./types";
 import { PRODUCTS, DEFAULT_CART_ITEMS, CATEGORIES as DEFAULT_CATEGORIES, CategoryType } from "./data";
 
+const makeFullUrl = (url: string) => {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
+    return url;
+  }
+  const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+  return `http://localhost:3003${cleanUrl}`;
+};
+
+const mapApiProduct = (item: any): Product => {
+  let parsedImages: string[] = [];
+  if (Array.isArray(item.images)) {
+    parsedImages = item.images.flatMap((img: any) => typeof img === "string" ? img.split(",") : []).map(img => makeFullUrl(img.trim()));
+  } else if (typeof item.images === "string") {
+    parsedImages = item.images.split(",").map(img => makeFullUrl(img.trim()));
+  } else if (typeof item.image === "string") {
+    parsedImages = item.image.split(",").map(img => makeFullUrl(img.trim()));
+  }
+
+  const mainImage = parsedImages[0] || makeFullUrl(item.image) || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=400";
+  if (parsedImages.length === 0) {
+    parsedImages = [mainImage];
+  }
+
+  const finalPrice = item.finalPrice || item.discounted_price || item.price;
+  const originalPrice = item.price > finalPrice ? item.price : undefined;
+  const tag = originalPrice ? `${item.discountValue || Math.round(((item.price - finalPrice) / item.price) * 100)}% OFF` : undefined;
+
+  const resolvedCategory = item.Category?.name || "Other";
+
+  const reviews = Array.isArray(item.Ratings) ? item.Ratings.map((r: any) => ({
+    id: String(r.id),
+    user: r.userName || "Customer",
+    stars: r.rating || 5,
+    comment: r.comment || "Great product!",
+    date: r.createdAt ? new Date(r.createdAt).toLocaleDateString() : "Recently"
+  })) : [];
+
+  return {
+    id: String(item.id),
+    name: item.name,
+    subtitle: item.stock > 0 ? `${item.stock} items remaining` : "In Stock",
+    category: resolvedCategory,
+    brand: item.brand || "PieMart Selection",
+    rating: typeof item.rating === "number" ? item.rating : (Number(item.averageRating) || 4.5),
+    ratingCount: typeof item.rating_count === "number" ? item.rating_count : (item.totalRatings || 1),
+    price: finalPrice,
+    originalPrice,
+    tag,
+    image: mainImage,
+    images: parsedImages,
+    description: item.description || "Premium product selected by PieMart.",
+    specs: [
+      { name: "Warranty", value: "1 Year International" },
+      { name: "Availability", value: item.stock > 0 ? `${item.stock} in stock` : "Available" },
+    ],
+    reviews,
+    categoryId: item.categoryId
+  };
+};
+
 export default function App() {
   // Navigation states
   const [currentTab, setCurrentTab] = useState<string>("catalog");
@@ -47,6 +108,9 @@ export default function App() {
   
   // Custom categories state initialized with beautiful standard categories with fallback icons/images
   const [categories, setCategories] = useState<CategoryType[]>(DEFAULT_CATEGORIES);
+
+  // All catalog products state loaded dynamically from standard API
+  const [allProducts, setAllProducts] = useState<Product[]>(PRODUCTS);
 
   // State for products loaded from active category API
   const [apiCategoryProducts, setApiCategoryProducts] = useState<Product[] | null>(null);
@@ -96,7 +160,34 @@ export default function App() {
       }
     };
 
+    const getProducts = async () => {
+      const endpoints = [
+        "http://localhost:3003/api/products",
+        "/api/products"
+      ];
+      for (const endpoint of endpoints) {
+        try {
+          const res = await fetch(endpoint, { signal: controller.signal });
+          if (res.ok) {
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+              const body = await res.json();
+              const rawProducts = Array.isArray(body) ? body : (body && Array.isArray(body.data) ? body.data : null);
+              if (rawProducts && active) {
+                const mapped = rawProducts.map((item: any) => mapApiProduct(item));
+                setAllProducts(mapped);
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`Products fetch unsuccessful for ${endpoint}:`, e);
+        }
+      }
+    };
+
     getCategories();
+    getProducts();
     return () => {
       active = false;
       clearTimeout(timer);
@@ -143,43 +234,10 @@ export default function App() {
                 const productsArray = Array.isArray(apiData.products) ? apiData.products : [];
                 
                 if (active) {
-                  const mapped = productsArray.map((item: any) => {
-                    const makeFullUrl = (url: string) => {
-                      if (!url) return "";
-                      if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
-                        return url;
-                      }
-                      const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-                      return `http://localhost:3003${cleanUrl}`;
-                    };
-
-                    const images = Array.isArray(item.images) && item.images.length > 0
-                      ? item.images.map(makeFullUrl)
-                      : [makeFullUrl(item.imageUrl || "")].filter(Boolean);
-
-                    const mainImage = images[0] || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=400";
-
-                    return {
-                      id: `api-prod-${item.id}`,
-                      name: item.name,
-                      subtitle: item.stock > 0 ? `${item.stock} items remaining` : "In Stock",
-                      category: apiData.name || filters.category,
-                      brand: "PieMart Selection",
-                      rating: 4.8,
-                      ratingCount: 15,
-                      price: item.finalPrice || item.price,
-                      originalPrice: item.price > (item.finalPrice || item.price) ? item.price : undefined,
-                      tag: item.finalPrice && item.finalPrice < item.price ? "Special Offer" : undefined,
-                      image: mainImage,
-                      images: images.length > 0 ? images : [mainImage],
-                      description: `${item.name} is a high-quality product selected premium-grade for PieMart customers. Crafted carefully to fit modern standards, ensuring absolute comfort and lifestyle enhancement. Currently ${item.stock || "plenty of"} stock is available.`,
-                      specs: [
-                        { name: "Warranty", value: "1 Year International" },
-                        { name: "Availability", value: item.stock > 0 ? `${item.stock} in stock` : "Available" },
-                      ],
-                      reviews: []
-                    };
-                  });
+                  const mapped = productsArray.map((item: any) => mapApiProduct({
+                    ...item,
+                    Category: { name: apiData.name }
+                  }));
 
                   setApiCategoryProducts(mapped);
                   success = true;
@@ -281,21 +339,50 @@ export default function App() {
   };
 
   // Click on related or specific item to load details page
-  const handleSelectProduct = (product: Product) => {
+  const handleSelectProduct = async (product: Product) => {
+    // Stage basic product for instant load
     setSelectedProduct(product);
     setCurrentTab("product-detail");
+
+    // Fetch dynamic product specifications and ratings from the specific direct API
+    const cleanId = product.id.replace("api-prod-", "");
+    const endpoints = [
+      `http://localhost:3003/api/products/${cleanId}`,
+      `/api/products/${cleanId}`
+    ];
+    for (const endpoint of endpoints) {
+      try {
+        const res = await fetch(endpoint);
+        if (res.ok) {
+          const contentType = res.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const body = await res.json();
+            if (body) {
+              const mapped = mapApiProduct(body);
+              setSelectedProduct(mapped);
+              
+              // Enrich current catalog items list with more specific metadata dynamically parsed
+              setAllProducts(prev => prev.map(p => p.id === product.id ? mapped : p));
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`Product detail fetch failed on ${endpoint}:`, e);
+      }
+    }
   };
 
   // Dynamic filter lists calculation
   const filteredProducts = useMemo(() => {
     const baseSource = (filters.category && apiCategoryProducts !== null) 
       ? apiCategoryProducts 
-      : PRODUCTS;
+      : allProducts;
 
     return baseSource.filter(p => {
       // Category match with smart plurals/singular/case-insensitive heuristic
-      if (filters.category && baseSource === PRODUCTS) {
-        // Only run local category check if we are fallback-filtering our local PRODUCTS list
+      if (filters.category && baseSource === allProducts) {
+        // Only run local category check if we are fallback-filtering our local products list
         const c1 = p.category.toLowerCase().trim();
         const c2 = filters.category.toLowerCase().trim();
         const isMatch = c1 === c2 || 
@@ -453,7 +540,7 @@ export default function App() {
                 <Sidebar 
                   filters={filters} 
                   setFilters={setFilters} 
-                  products={PRODUCTS}
+                  products={allProducts}
                   categories={categories}
                 />
               </div>
@@ -568,7 +655,7 @@ export default function App() {
             onAddToCart={handleAddToCart}
             wishlist={wishlist}
             onToggleWishlist={handleToggleWishlist}
-            allProducts={PRODUCTS}
+            allProducts={allProducts}
             onSelectProduct={setSelectedProduct}
           />
         )}
@@ -581,7 +668,7 @@ export default function App() {
             onRemoveItem={handleRemoveCartItem}
             onClearCart={handleClearCart}
             onGoBack={() => setCurrentTab("catalog")}
-            allProducts={PRODUCTS}
+            allProducts={allProducts}
             onSelectProduct={handleSelectProduct}
           />
         )}
@@ -611,7 +698,7 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-              {PRODUCTS.filter(p => p.originalPrice !== undefined).map(item => (
+              {allProducts.filter(p => p.originalPrice !== undefined).map(item => (
                 <ProductCard
                   key={item.id}
                   product={item}
@@ -729,7 +816,7 @@ export default function App() {
                     Our luxury sports watch made of rugged, sandblasted titanium. Designed with Swiss kinetic quartz accuracy for maximum boardroom confidence.
                   </p>
                   <button 
-                    onClick={() => handleSelectProduct(PRODUCTS.find(p => p.id === "zenith-x2")!)}
+                    onClick={() => handleSelectProduct(allProducts.find(p => p.id === "zenith-x2") || PRODUCTS.find(p => p.id === "zenith-x2")!)}
                     className="mt-2 text-xs font-bold text-[#002B24] hover:underline flex items-center justify-start gap-1 cursor-pointer"
                   >
                     Read Release &rarr;
@@ -751,11 +838,11 @@ export default function App() {
                     The absolute ultimate workstation setup is now available at our store. Enjoy fanless performance, zero compile stalls, and crystal clear Liquid Retina displays.
                   </p>
                   <button 
-                    onClick={() => handleSelectProduct(PRODUCTS.find(p => p.id === "pro-laptop")!)}
+                    onClick={() => handleSelectProduct(allProducts.find(p => p.id === "pro-laptop") || PRODUCTS.find(p => p.id === "pro-laptop")!)}
                     className="mt-2 text-xs font-bold text-[#002B24] hover:underline flex items-center justify-start gap-1 cursor-pointer"
                   >
                     Read Release &rarr;
-                  </button>
+                </button>
                 </div>
               </div>
 
@@ -773,7 +860,7 @@ export default function App() {
                     Ready to hit the trails or gym sets? Grab the classic orange and pure white Urban Velocity shoes. Features responsive high density rubber bubble outsoles.
                   </p>
                   <button 
-                    onClick={() => handleSelectProduct(PRODUCTS.find(p => p.id === "urban-velocity")!)}
+                    onClick={() => handleSelectProduct(allProducts.find(p => p.id === "urban-velocity") || PRODUCTS.find(p => p.id === "urban-velocity")!)}
                     className="mt-2 text-xs font-bold text-[#002B24] hover:underline flex items-center justify-start gap-1 cursor-pointer"
                   >
                     Read Release &rarr;

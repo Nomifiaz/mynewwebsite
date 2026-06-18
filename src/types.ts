@@ -29,6 +29,7 @@ export interface Product {
   reviews: Review[];
   colors?: string[]; // hex or color names
   sizes?: string[]; // sizes like 42mm, 46mm
+  categoryId?: number | string;
 }
 
 export interface CartItem {
