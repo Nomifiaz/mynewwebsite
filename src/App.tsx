@@ -48,6 +48,10 @@ export default function App() {
   // Custom categories state initialized with beautiful standard categories with fallback icons/images
   const [categories, setCategories] = useState<CategoryType[]>(DEFAULT_CATEGORIES);
 
+  // State for products loaded from active category API
+  const [apiCategoryProducts, setApiCategoryProducts] = useState<Product[] | null>(null);
+  const [isCategoryProductsLoading, setIsCategoryProductsLoading] = useState(false);
+
   // Dynamic API Fetch with robust fallback logic
   useEffect(() => {
     let active = true;
@@ -96,6 +100,102 @@ export default function App() {
       controller.abort();
     };
   }, []);
+
+  // Sync category change with products fetching from CategoriesProducts API
+  useEffect(() => {
+    if (!filters.category) {
+      setApiCategoryProducts(null);
+      return;
+    }
+
+    const matchedCategory = categories.find(
+      c => c.name.toLowerCase().trim() === filters.category.toLowerCase().trim()
+    );
+
+    if (!matchedCategory) {
+      setApiCategoryProducts(null);
+      return;
+    }
+
+    let active = true;
+    setIsCategoryProductsLoading(true);
+
+    const fetchCategoryProducts = async () => {
+      const endpoints = [
+        `http://localhost:3003/api/categories/CategoryProducts/${matchedCategory.id}`,
+        `/api/categories/CategoryProducts/${matchedCategory.id}`
+      ];
+
+      for (const endpoint of endpoints) {
+        try {
+          const res = await fetch(endpoint);
+          if (res.ok) {
+            const body = await res.json();
+            if (body && body.success && body.data) {
+              const apiData = body.data;
+              const productsArray = Array.isArray(apiData.products) ? apiData.products : [];
+              
+              if (active) {
+                const mapped = productsArray.map((item: any) => {
+                  const makeFullUrl = (url: string) => {
+                    if (!url) return "";
+                    if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
+                      return url;
+                    }
+                    const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+                    return `http://localhost:3003${cleanUrl}`;
+                  };
+
+                  const images = Array.isArray(item.images) && item.images.length > 0
+                    ? item.images.map(makeFullUrl)
+                    : [makeFullUrl(item.imageUrl || "")].filter(Boolean);
+
+                  const mainImage = images[0] || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=400";
+
+                  return {
+                    id: `api-prod-${item.id}`,
+                    name: item.name,
+                    subtitle: item.stock > 0 ? `${item.stock} items remaining` : "In Stock",
+                    category: apiData.name || filters.category,
+                    brand: "PieMart Selection",
+                    rating: 4.8,
+                    ratingCount: 15,
+                    price: item.finalPrice || item.price,
+                    originalPrice: item.price > (item.finalPrice || item.price) ? item.price : undefined,
+                    tag: item.finalPrice && item.finalPrice < item.price ? "Special Offer" : undefined,
+                    image: mainImage,
+                    images: images.length > 0 ? images : [mainImage],
+                    description: `${item.name} is a high-quality product selected premium-grade for PieMart customers. Crafted carefully to fit modern standards, ensuring absolute comfort and lifestyle enhancement. Currently ${item.stock || "plenty of"} stock is available.`,
+                    specs: [
+                      { name: "Warranty", value: "1 Year International" },
+                      { name: "Availability", value: item.stock > 0 ? `${item.stock} in stock` : "Available" },
+                    ],
+                    reviews: []
+                  };
+                });
+
+                setApiCategoryProducts(mapped);
+                setIsCategoryProductsLoading(false);
+                return; // Fetch succeeded, stop trying endpoints
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`Category products fetch unsuccessful from ${endpoint}:`, e);
+        }
+      }
+
+      if (active) {
+        setIsCategoryProductsLoading(false);
+      }
+    };
+
+    fetchCategoryProducts();
+
+    return () => {
+      active = false;
+    };
+  }, [filters.category, categories]);
 
   // Mobile filter drawer toggle
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
@@ -176,9 +276,14 @@ export default function App() {
 
   // Dynamic filter lists calculation
   const filteredProducts = useMemo(() => {
-    return PRODUCTS.filter(p => {
+    const baseSource = (filters.category && apiCategoryProducts !== null) 
+      ? apiCategoryProducts 
+      : PRODUCTS;
+
+    return baseSource.filter(p => {
       // Category match with smart plurals/singular/case-insensitive heuristic
-      if (filters.category) {
+      if (filters.category && baseSource === PRODUCTS) {
+        // Only run local category check if we are fallback-filtering our local PRODUCTS list
         const c1 = p.category.toLowerCase().trim();
         const c2 = filters.category.toLowerCase().trim();
         const isMatch = c1 === c2 || 
@@ -208,15 +313,15 @@ export default function App() {
       if (searchQuery) {
         const trg = searchQuery.toLowerCase();
         const nameMatch = p.name.toLowerCase().includes(trg);
-        const subMatch = p.subtitle.toLowerCase().includes(trg);
-        const descMatch = p.description.toLowerCase().includes(trg);
-        const brandMatch = p.brand.toLowerCase().includes(trg);
+        const subMatch = p.subtitle ? p.subtitle.toLowerCase().includes(trg) : false;
+        const descMatch = p.description ? p.description.toLowerCase().includes(trg) : false;
+        const brandMatch = p.brand ? p.brand.toLowerCase().includes(trg) : false;
         if (!nameMatch && !subMatch && !descMatch && !brandMatch) return false;
       }
 
       return true;
     });
-  }, [filters, searchQuery]);
+  }, [filters, searchQuery, apiCategoryProducts]);
 
   // Sorting logics
   const sortedProducts = useMemo(() => {
@@ -363,7 +468,15 @@ export default function App() {
                 </div>
 
                 {/* Grid */}
-                {sortedProducts.length === 0 ? (
+                {isCategoryProductsLoading ? (
+                  <div className="bg-white rounded-xl border border-gray-100 p-20 text-center flex flex-col items-center justify-center gap-4 select-none">
+                    <div className="w-10 h-10 border-3 border-[#002B24] border-t-[#F37D35] rounded-full animate-spin"></div>
+                    <div>
+                      <h4 className="font-display font-semibold text-gray-800 text-sm">Loading Department Items</h4>
+                      <p className="text-xs text-gray-400 mt-1">Fetching real-time inventory from the warehouse...</p>
+                    </div>
+                  </div>
+                ) : sortedProducts.length === 0 ? (
                   <div className="bg-white rounded-xl border border-gray-100 p-12 text-center flex flex-col items-center justify-center gap-3">
                     <AlertCircle size={32} className="text-[#F37D35]" />
                     <h4 className="font-display font-bold text-gray-800 text-base">No match found</h4>
