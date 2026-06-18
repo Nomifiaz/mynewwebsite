@@ -69,21 +69,24 @@ export default function App() {
         try {
           const res = await fetch(endpoint, { signal: controller.signal });
           if (res.ok) {
-            const body = await res.json();
-            if (body && body.success && Array.isArray(body.data)) {
-              if (active) {
-                const loaded = body.data.map((raw: any) => ({
-                  id: raw.id || raw.name.toLowerCase().replace(/\s+/g, "-"),
-                  name: raw.name,
-                  imageUrl: raw.imageUrl?.startsWith("http") 
-                    ? raw.imageUrl 
-                    : raw.imageUrl?.startsWith("/") 
-                      ? `http://localhost:3003${raw.imageUrl}` 
-                      : `http://localhost:3003/${raw.imageUrl}`
-                }));
-                setCategories(loaded);
-                clearTimeout(timer);
-                return;
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+              const body = await res.json();
+              if (body && body.success && Array.isArray(body.data)) {
+                if (active) {
+                  const loaded = body.data.map((raw: any) => ({
+                    id: raw.id || raw.name.toLowerCase().replace(/\s+/g, "-"),
+                    name: raw.name,
+                    imageUrl: raw.imageUrl?.startsWith("http") 
+                      ? raw.imageUrl 
+                      : raw.imageUrl?.startsWith("/") 
+                        ? `http://localhost:3003${raw.imageUrl}` 
+                        : `http://localhost:3003/${raw.imageUrl}`
+                  }));
+                  setCategories(loaded);
+                  clearTimeout(timer);
+                  return;
+                }
               }
             }
           }
@@ -126,57 +129,62 @@ export default function App() {
         `/api/categories/CategoryProducts/${matchedCategory.id}`
       ];
 
+      let success = false;
+
       for (const endpoint of endpoints) {
         try {
           const res = await fetch(endpoint);
           if (res.ok) {
-            const body = await res.json();
-            if (body && body.success && body.data) {
-              const apiData = body.data;
-              const productsArray = Array.isArray(apiData.products) ? apiData.products : [];
-              
-              if (active) {
-                const mapped = productsArray.map((item: any) => {
-                  const makeFullUrl = (url: string) => {
-                    if (!url) return "";
-                    if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
-                      return url;
-                    }
-                    const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-                    return `http://localhost:3003${cleanUrl}`;
-                  };
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+              const body = await res.json();
+              if (body && body.success && body.data) {
+                const apiData = body.data;
+                const productsArray = Array.isArray(apiData.products) ? apiData.products : [];
+                
+                if (active) {
+                  const mapped = productsArray.map((item: any) => {
+                    const makeFullUrl = (url: string) => {
+                      if (!url) return "";
+                      if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
+                        return url;
+                      }
+                      const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+                      return `http://localhost:3003${cleanUrl}`;
+                    };
 
-                  const images = Array.isArray(item.images) && item.images.length > 0
-                    ? item.images.map(makeFullUrl)
-                    : [makeFullUrl(item.imageUrl || "")].filter(Boolean);
+                    const images = Array.isArray(item.images) && item.images.length > 0
+                      ? item.images.map(makeFullUrl)
+                      : [makeFullUrl(item.imageUrl || "")].filter(Boolean);
 
-                  const mainImage = images[0] || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=400";
+                    const mainImage = images[0] || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=400";
 
-                  return {
-                    id: `api-prod-${item.id}`,
-                    name: item.name,
-                    subtitle: item.stock > 0 ? `${item.stock} items remaining` : "In Stock",
-                    category: apiData.name || filters.category,
-                    brand: "PieMart Selection",
-                    rating: 4.8,
-                    ratingCount: 15,
-                    price: item.finalPrice || item.price,
-                    originalPrice: item.price > (item.finalPrice || item.price) ? item.price : undefined,
-                    tag: item.finalPrice && item.finalPrice < item.price ? "Special Offer" : undefined,
-                    image: mainImage,
-                    images: images.length > 0 ? images : [mainImage],
-                    description: `${item.name} is a high-quality product selected premium-grade for PieMart customers. Crafted carefully to fit modern standards, ensuring absolute comfort and lifestyle enhancement. Currently ${item.stock || "plenty of"} stock is available.`,
-                    specs: [
-                      { name: "Warranty", value: "1 Year International" },
-                      { name: "Availability", value: item.stock > 0 ? `${item.stock} in stock` : "Available" },
-                    ],
-                    reviews: []
-                  };
-                });
+                    return {
+                      id: `api-prod-${item.id}`,
+                      name: item.name,
+                      subtitle: item.stock > 0 ? `${item.stock} items remaining` : "In Stock",
+                      category: apiData.name || filters.category,
+                      brand: "PieMart Selection",
+                      rating: 4.8,
+                      ratingCount: 15,
+                      price: item.finalPrice || item.price,
+                      originalPrice: item.price > (item.finalPrice || item.price) ? item.price : undefined,
+                      tag: item.finalPrice && item.finalPrice < item.price ? "Special Offer" : undefined,
+                      image: mainImage,
+                      images: images.length > 0 ? images : [mainImage],
+                      description: `${item.name} is a high-quality product selected premium-grade for PieMart customers. Crafted carefully to fit modern standards, ensuring absolute comfort and lifestyle enhancement. Currently ${item.stock || "plenty of"} stock is available.`,
+                      specs: [
+                        { name: "Warranty", value: "1 Year International" },
+                        { name: "Availability", value: item.stock > 0 ? `${item.stock} in stock` : "Available" },
+                      ],
+                      reviews: []
+                    };
+                  });
 
-                setApiCategoryProducts(mapped);
-                setIsCategoryProductsLoading(false);
-                return; // Fetch succeeded, stop trying endpoints
+                  setApiCategoryProducts(mapped);
+                  success = true;
+                  break; // Successful loading, exit endpoints loop
+                }
               }
             }
           }
@@ -187,6 +195,10 @@ export default function App() {
 
       if (active) {
         setIsCategoryProductsLoading(false);
+        if (!success) {
+          // If we couldn't load from the API, clear custom products state so we fall back to local mock items under this category name
+          setApiCategoryProducts(null);
+        }
       }
     };
 
