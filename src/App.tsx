@@ -119,23 +119,23 @@ export default function App() {
   // Dynamic API Fetch with robust fallback logic
   useEffect(() => {
     let active = true;
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      controller.abort();
-    }, 4500); // Fail fast so layout is clean without blocking
 
     const getCategories = async () => {
+      console.log("[PieMart DB Sync] Fetching categories from backend...");
       const endpoints = [
         "http://localhost:3003/api/categories",
         "/api/categories"
       ];
       for (const endpoint of endpoints) {
         try {
-          const res = await fetch(endpoint, { signal: controller.signal });
+          console.log(`[PieMart DB Sync] Trying category endpoint: ${endpoint}`);
+          const res = await fetch(endpoint);
+          console.log(`[PieMart DB Sync] Response status for ${endpoint}:`, res.status);
           if (res.ok) {
             const contentType = res.headers.get("content-type");
             if (contentType && contentType.includes("application/json")) {
               const body = await res.json();
+              console.log(`[PieMart DB Sync] Received body from ${endpoint}:`, body);
               if (body && body.success && Array.isArray(body.data)) {
                 if (active) {
                   const loaded = body.data.map((raw: any) => ({
@@ -148,40 +148,54 @@ export default function App() {
                         : `http://localhost:3003/${raw.imageUrl}`
                   }));
                   setCategories(loaded);
-                  clearTimeout(timer);
+                  console.info("[PieMart DB Sync] Successfully loaded category list into state:", loaded);
                   return;
                 }
+              } else {
+                console.warn(`[PieMart DB Sync] Response did not match expected { success: true, data: [...] } layout. Raw:`, body);
               }
+            } else {
+              console.warn(`[PieMart DB Sync] Response for ${endpoint} was not JSON. Content-Type:`, contentType);
             }
           }
         } catch (e) {
-          console.warn(`Category fetch unsuccessful for ${endpoint}:`, e);
+          console.warn(`[PieMart DB Sync] Category fetch failed for ${endpoint}:`, e);
         }
       }
+      console.warn("[PieMart DB Sync] Could not load categories from any API source. Retaining default client fallbacks.");
     };
 
     const getProducts = async () => {
+      console.log("[PieMart DB Sync] Fetching all catalog products from backend...");
       const endpoints = [
         "http://localhost:3003/api/products",
         "/api/products"
       ];
       for (const endpoint of endpoints) {
         try {
-          const res = await fetch(endpoint, { signal: controller.signal });
+          console.log(`[PieMart DB Sync] Trying products endpoint: ${endpoint}`);
+          const res = await fetch(endpoint);
+          console.log(`[PieMart DB Sync] Response status for ${endpoint}:`, res.status);
           if (res.ok) {
             const contentType = res.headers.get("content-type");
             if (contentType && contentType.includes("application/json")) {
               const body = await res.json();
+              console.log(`[PieMart DB Sync] Received body from ${endpoint}:`, body);
               const rawProducts = Array.isArray(body) ? body : (body && Array.isArray(body.data) ? body.data : null);
               if (rawProducts && active) {
                 const mapped = rawProducts.map((item: any) => mapApiProduct(item));
                 setAllProducts(mapped);
+                console.info("[PieMart DB Sync] Successfully loaded products list into state:", mapped);
                 break;
+              } else {
+                console.warn(`[PieMart DB Sync] Products response did not contain array. Raw:`, body);
               }
+            } else {
+              console.warn(`[PieMart DB Sync] Response for ${endpoint} was not JSON. Content-Type:`, contentType);
             }
           }
         } catch (e) {
-          console.warn(`Products fetch unsuccessful for ${endpoint}:`, e);
+          console.warn(`[PieMart DB Sync] Products fetch failed for ${endpoint}:`, e);
         }
       }
     };
@@ -190,14 +204,13 @@ export default function App() {
     getProducts();
     return () => {
       active = false;
-      clearTimeout(timer);
-      controller.abort();
     };
   }, []);
 
   // Sync category change with products fetching from CategoriesProducts API
   useEffect(() => {
     if (!filters.category) {
+      console.log("[PieMart Category Sync] No category selected. Clearing category-specific API list.");
       setApiCategoryProducts(null);
       return;
     }
@@ -207,10 +220,12 @@ export default function App() {
     );
 
     if (!matchedCategory) {
+      console.warn(`[PieMart Category Sync] Selected visual category "${filters.category}" was not found in loaded categories:`, categories.map(c => c.name));
       setApiCategoryProducts(null);
       return;
     }
 
+    console.log(`[PieMart Category Sync] Synchronizing selected category: "${matchedCategory.name}" (ID: ${matchedCategory.id})`);
     let active = true;
     setIsCategoryProductsLoading(true);
 
@@ -224,11 +239,14 @@ export default function App() {
 
       for (const endpoint of endpoints) {
         try {
+          console.log(`[PieMart Category Sync] Attempting to fetch items for category "${matchedCategory.name}" from: ${endpoint}`);
           const res = await fetch(endpoint);
+          console.log(`[PieMart Category Sync] Response status from ${endpoint}:`, res.status);
           if (res.ok) {
             const contentType = res.headers.get("content-type");
             if (contentType && contentType.includes("application/json")) {
               const body = await res.json();
+              console.log(`[PieMart Category Sync] Loaded category data:`, body);
               if (body && body.success && body.data) {
                 const apiData = body.data;
                 const productsArray = Array.isArray(apiData.products) ? apiData.products : [];
@@ -239,21 +257,27 @@ export default function App() {
                     Category: { name: apiData.name }
                   }));
 
+                  console.info(`[PieMart Category Sync] Successfully mapped ${mapped.length} products for department "${matchedCategory.name}":`, mapped);
                   setApiCategoryProducts(mapped);
                   success = true;
                   break; // Successful loading, exit endpoints loop
                 }
+              } else {
+                console.warn(`[PieMart Category Sync] API responded but body format does not match expected { success: true, data: { products: [...] } }. Raw:`, body);
               }
+            } else {
+              console.warn(`[PieMart Category Sync] Non-JSON payload received from ${endpoint}. Content-Type:`, contentType);
             }
           }
         } catch (e) {
-          console.warn(`Category products fetch unsuccessful from ${endpoint}:`, e);
+          console.warn(`[PieMart Category Sync] Error fetching category products from ${endpoint}:`, e);
         }
       }
 
       if (active) {
         setIsCategoryProductsLoading(false);
         if (!success) {
+          console.warn(`[PieMart Category Sync] Failed to retrieve products from any API for category "${matchedCategory.name}". Falling back to client-side catalog matching.`);
           // If we couldn't load from the API, clear custom products state so we fall back to local mock items under this category name
           setApiCategoryProducts(null);
         }
@@ -656,7 +680,7 @@ export default function App() {
             wishlist={wishlist}
             onToggleWishlist={handleToggleWishlist}
             allProducts={allProducts}
-            onSelectProduct={setSelectedProduct}
+            onSelectProduct={handleSelectProduct}
           />
         )}
 
